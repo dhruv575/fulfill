@@ -8,12 +8,17 @@ router.post('/login', (req, res) => {
     return res.status(401).json({ error: 'Invalid password' });
   }
   
+  // Determine environment and set appropriate cookie settings
+  const isProduction = process.env.NODE_ENV === 'production';
+  
   // Set a signed cookie that expires in 30 days
   res.cookie('auth', 'MonmouthAndOcean', {
     signed: true,
     httpOnly: true,
     maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-    sameSite: 'strict'
+    sameSite: isProduction ? 'none' : 'strict', // Use 'none' for cross-site in production
+    secure: isProduction, // Cookies with sameSite=none must be secure
+    domain: isProduction ? '.vercel.app' : undefined // Optional: set domain in production
   });
   
   res.json({ success: true, message: 'Login successful' });
@@ -32,7 +37,15 @@ router.get('/check', (req, res) => {
 
 // Logout route
 router.post('/logout', (req, res) => {
-  res.clearCookie('auth');
+  // Use same settings for clearing cookies as for setting them
+  const isProduction = process.env.NODE_ENV === 'production';
+  
+  res.clearCookie('auth', {
+    sameSite: isProduction ? 'none' : 'strict',
+    secure: isProduction,
+    domain: isProduction ? '.vercel.app' : undefined
+  });
+  
   res.json({ success: true, message: 'Logout successful' });
 });
 
