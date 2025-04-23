@@ -17,8 +17,7 @@ router.post('/login', (req, res) => {
     httpOnly: true,
     maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
     sameSite: isProduction ? 'none' : 'strict', // Use 'none' for cross-site in production
-    secure: isProduction, // Cookies with sameSite=none must be secure
-    domain: isProduction ? '.vercel.app' : undefined // Optional: set domain in production
+    secure: isProduction // Cookies with sameSite=none must be secure
   });
   
   res.json({ success: true, message: 'Login successful' });
@@ -42,8 +41,7 @@ router.post('/logout', (req, res) => {
   
   res.clearCookie('auth', {
     sameSite: isProduction ? 'none' : 'strict',
-    secure: isProduction,
-    domain: isProduction ? '.vercel.app' : undefined
+    secure: isProduction
   });
   
   res.json({ success: true, message: 'Logout successful' });

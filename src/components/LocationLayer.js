@@ -358,17 +358,32 @@ const LocationLayer = memo(({ map, popupRef, isVisible, isMapReady, token, categ
     if (!isMapReady || !map || !map.getLayer(layerId)) return;
 
     const onMouseEnter = (e) => {
+      // Cursor change
       map.getCanvas().style.cursor = 'pointer';
+      
+      // Get clicked feature
       const feature = e.features[0];
+      const { Name, Address, Category } = feature.properties;
+      
+      // Get coordinates
       const coordinates = feature.geometry.coordinates.slice();
-      const properties = feature.properties;
-      // Use correct properties from createGeoJSON
-      const description = `<strong>${properties.Name}</strong><br/>Category: ${properties.Category}<br/>Address: ${properties.Address}`;
-
-      while (Math.abs(e.lngLat.lng - coordinates[0]) > 180) {
-        coordinates[0] += e.lngLat.lng > coordinates[0] ? 360 : -360;
-      }
-      popupRef.current.setLngLat(coordinates).setHTML(description).addTo(map);
+      
+      // Create HTML content with more details
+      const html = `
+        <div class="mapbox-popup location-popup">
+          <h4>${Name || 'Unnamed Location'}</h4>
+          <div class="popup-category" style="background-color: ${locationCategoryColors[Category] || locationCategoryColors['Default']}">
+            ${Category || 'Uncategorized'}
+          </div>
+          <p class="popup-address">${Address || 'No address provided'}</p>
+        </div>
+      `;
+      
+      // Set popup content and location
+      popupRef.current
+        .setLngLat(coordinates)
+        .setHTML(html)
+        .addTo(map);
     };
 
     const onMouseLeave = () => {

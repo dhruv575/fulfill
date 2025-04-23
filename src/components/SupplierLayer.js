@@ -251,16 +251,51 @@ const SupplierLayer = memo(({ map, popupRef, isVisible, isMapReady, token }) => 
   useEffect(() => {
     if (!isMapReady || !map || !map.getLayer(layerId)) return;
     const onMouseEnter = (e) => {
+      // Cursor change
       map.getCanvas().style.cursor = 'pointer';
+      
+      // Get clicked feature
       const feature = e.features[0];
+      const { Identifier, Address, Partners } = feature.properties;
+      
+      // Get coordinates
       const coordinates = feature.geometry.coordinates.slice();
-      const properties = feature.properties;
-      const description = `<strong>${properties.Identifier}</strong><br/>Partners: ${properties.Partners}<br/>Address: ${properties.Address}`;
-
-      while (Math.abs(e.lngLat.lng - coordinates[0]) > 180) {
-        coordinates[0] += e.lngLat.lng > coordinates[0] ? 360 : -360;
+      
+      // Format partners list if it exists
+      let partnersDisplay = 'None';
+      if (Partners) {
+        try {
+          // Try to parse if it's a JSON string
+          const partnersList = typeof Partners === 'string' ? 
+            (Partners.startsWith('[') ? JSON.parse(Partners) : Partners.split(',')) : 
+            Partners;
+            
+          if (Array.isArray(partnersList)) {
+            partnersDisplay = partnersList.join(', ');
+          } else {
+            partnersDisplay = String(Partners);
+          }
+        } catch (e) {
+          partnersDisplay = String(Partners);
+        }
       }
-      popupRef.current.setLngLat(coordinates).setHTML(description).addTo(map);
+      
+      // Create HTML content
+      const html = `
+        <div class="mapbox-popup supplier-popup">
+          <h4>${Identifier || 'Unnamed Supplier'}</h4>
+          <p class="popup-address">${Address || 'No address provided'}</p>
+          <div class="popup-partners">
+            <strong>Partners:</strong> ${partnersDisplay}
+          </div>
+        </div>
+      `;
+      
+      // Set popup content and location
+      popupRef.current
+        .setLngLat(coordinates)
+        .setHTML(html)
+        .addTo(map);
     };
 
     const onMouseLeave = () => {

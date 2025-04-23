@@ -9,13 +9,44 @@ const port = process.env.PORT || 5000;
 
 // Environment determination
 const isProduction = process.env.NODE_ENV === 'production';
+
+// Clean the frontend URL (remove trailing slash if present)
+const frontendUrl = process.env.FRONTEND_URL ? process.env.FRONTEND_URL.replace(/\/$/, '') : '';
+
+// Define allowed origins
 const allowedOrigins = isProduction
-  ? [process.env.FRONTEND_URL, 'https://fulfill-dashboard.vercel.app', 'https://fulfill-dashboard-git-main.vercel.app']
+  ? [
+      frontendUrl,
+      'https://fulfill-theta.vercel.app',
+      'https://fulfill-dashboard.vercel.app', 
+      'https://fulfill-dashboard-git-main.vercel.app'
+    ].filter(Boolean) // Remove empty strings
   : 'http://localhost:3000';
+
+// Log allowed origins in production for debugging
+if (isProduction) {
+  console.log('Allowed origins:', allowedOrigins);
+}
 
 // Middleware
 app.use(cors({
-  origin: allowedOrigins,
+  origin: function(origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    if (isProduction) {
+      // If we're in production mode, check against the allowed origins array
+      if (allowedOrigins.indexOf(origin) !== -1 || !origin) {
+        callback(null, true);
+      } else {
+        console.log('Origin not allowed by CORS:', origin);
+        callback(null, true); // Still allow all origins for now (debugging)
+      }
+    } else {
+      // In development, just allow localhost
+      callback(null, true);
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']

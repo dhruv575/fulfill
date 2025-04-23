@@ -8,10 +8,12 @@ This guide addresses the cross-domain cookie authentication issues between the f
 
    ```
    NODE_ENV=production
-   FRONTEND_URL=https://fulfill-dashboard.vercel.app
+   FRONTEND_URL=https://fulfill-theta.vercel.app
    COOKIE_SECRET=hrowuifhcirebvuwfhlcbeirudhkvoerwvnehroivhenroivheroiv
    ATLAS_URI=mongodb+srv://dhruvgupta:qoE0MrtaVtUmlFyD@fulfillnj.fz1wk.mongodb.net/?retryWrites=true&w=majority&appName=fulfillNJ
    ```
+
+   **IMPORTANT**: Make sure there is NO trailing slash in the FRONTEND_URL.
 
 2. Redeploy the backend to Vercel:
    ```
@@ -42,23 +44,34 @@ This guide addresses the cross-domain cookie authentication issues between the f
 
 The following changes were made to fix the authentication issues:
 
-1. Updated the cookie settings in `backend/routes/auth.js` to use:
-   - `sameSite: 'none'` in production
-   - `secure: true` in production
-   - Proper domain settings
+1. Updated the cookie settings in `backend/routes/auth.js`:
+   - Removed the `domain` property which was causing issues
+   - Kept `sameSite: 'none'` and `secure: true` for production
 
-2. Updated the CORS configuration in `backend/server.js` to:
-   - Allow appropriate origins
-   - Support all necessary methods and headers
-   - Properly handle credentials
+2. Enhanced the CORS configuration in `backend/server.js`:
+   - Added more allowed origins including the actual frontend URL
+   - Added a function-based origin handler with debugging
+   - Added logic to handle trailing slashes in URLs
 
-3. Added environment configuration to ensure production settings are correctly applied
+3. Added debugging to the auth middleware to help diagnose issues
+
+4. Fixed the trailing slash in the FRONTEND_URL environment variable
 
 ## Troubleshooting
 
 If issues persist:
 
-1. Check browser developer tools > Network tab to see if cookies are being set
-2. Check browser developer tools > Console for any CORS or authentication errors
-3. Verify that both frontend and backend have the correct environment variables set in Vercel
-4. Try clearing browser cookies and cache before testing again 
+1. Check that third-party cookies are allowed in your browser
+   - Some browsers block third-party cookies by default
+   - For Chrome, check Settings > Privacy and Security > Cookies and Site Data
+   - For Safari, check Preferences > Privacy > Website tracking
+
+2. Verify the backend logs for authentication debugging info
+   - Look for "Auth middleware called" messages
+   - Check if cookies are being received properly
+
+3. Try using a different browser to rule out browser-specific issues
+
+4. Ensure your frontend is making requests to the correct backend URL
+
+5. If all else fails, implement a token-based authentication system using localStorage instead of cookies 

@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
-import { zipService } from '../services/api';
+import { zipService, locationService } from '../services/api';
 import LocationLayer from '../components/LocationLayer';
 import SupplierLayer from '../components/SupplierLayer';
 
@@ -49,6 +49,10 @@ const MapPage = () => {
   const [showZipBoundaries, setShowZipBoundaries] = useState(true);
   const [showLocations, setShowLocations] = useState(true);
   const [showSuppliers, setShowSuppliers] = useState(true);
+  const [showNeedGradient, setShowNeedGradient] = useState(false);
+  const [allZipsData, setAllZipsData] = useState([]);
+  const [locationCounts, setLocationCounts] = useState({});
+  const [needDataLoading, setNeedDataLoading] = useState(false);
   
   // Category filters state - default to all visible
   const [categoryFilters, setCategoryFilters] = useState({
@@ -154,6 +158,52 @@ const MapPage = () => {
     };
   }, []); // Runs once
 
+  // Load all zips data for need calculation
+  useEffect(() => {
+    const fetchAllZipsData = async () => {
+      if (!isMapReady) return;
+      
+      setNeedDataLoading(true);
+      try {
+        const response = await zipService.getAll();
+        if (Array.isArray(response)) {
+          setAllZipsData(response);
+        }
+      } catch (error) {
+        console.error('Error fetching all zips data:', error);
+      } finally {
+        setNeedDataLoading(false);
+      }
+    };
+    
+    fetchAllZipsData();
+  }, [isMapReady]);
+  
+  // Load location counts by category
+  useEffect(() => {
+    const fetchLocationCountsByCategory = async () => {
+      if (!isMapReady) return;
+      
+      try {
+        const locations = await locationService.getAll();
+        if (Array.isArray(locations)) {
+          // Count locations by category
+          const counts = {};
+          for (const category of Object.keys(categoryFilters)) {
+            counts[category] = locations.filter(loc => 
+              (loc.Category || loc.category) === category
+            ).length;
+          }
+          setLocationCounts(counts);
+        }
+      } catch (error) {
+        console.error('Error fetching location counts:', error);
+      }
+    };
+    
+    fetchLocationCountsByCategory();
+  }, [isMapReady, categoryFilters]);
+
   // Fetch data for a specific zip code
   const fetchZipData = async (zipCode) => {
     setLoadingZipData(true);
@@ -199,6 +249,96 @@ const MapPage = () => {
       [category]: !prev[category]
     }));
   };
+
+  // Calculate need value for a zip code
+  const calculateNeedValue = (zipData) => {
+    if (!zipData) return 0;
+    
+    // Combine factors that indicate need
+    const foodInsecurity = zipData.pct_food_insecure || 0;
+    const povertyRate = zipData.pct_poverty || 0;
+    const unemploymentRate = zipData.unemployment_rate || 0;
+    
+    // Simple weighted calculation (adjust weights based on importance)
+    return (foodInsecurity * 0.5) + (povertyRate * 0.3) + (unemploymentRate * 0.2);
+  };
+
+  // Apply need gradient to zip codes
+  const applyNeedGradient = useCallback(() => {
+    if (!mapInstanceRef.current || !allZipsData.length) return;
+    
+    // Calculate need values for all zips
+    const needValues = {};
+    let maxNeed = 0;
+    
+    allZipsData.forEach(zip => {
+      const need = calculateNeedValue(zip);
+      needValues[zip.geography] = need;
+      maxNeed = Math.max(maxNeed, need);
+    });
+    
+    // Create a data-driven style for fill color using a gradient from light blue to dark blue
+    mapInstanceRef.current.setPaintProperty('zip-fills', 'fill-color', [
+      'case',
+      ['has', ['to-string', ['get', 'ZCTA5CE10']], ['literal', needValues]],
+      [
+        'interpolate',
+        ['linear'],
+        ['/', ['get', ['to-string', ['get', 'ZCTA5CE10']], ['literal', needValues]], maxNeed || 1],
+        0, '#cce5ff', // Very light blue for low need
+        0.25, '#66b3ff', // Light blue for low-medium need
+        0.5, '#3498db', // Medium blue for medium need
+        0.75, '#2c74b3', // Darker blue for medium-high need
+        1, '#1a4f8a' // Darkest blue for high need
+      ],
+      '#e0e0e0' // Light gray for zips without data
+    ]);
+    
+    // Set opacity based on need value (0.1 to 0.85 opacity for more contrast)
+    mapInstanceRef.current.setPaintProperty('zip-fills', 'fill-opacity', [
+      'case',
+      ['has', ['to-string', ['get', 'ZCTA5CE10']], ['literal', needValues]],
+      [
+        '+',
+        0.1, // Minimum opacity
+        [
+          '*',
+          0.75, // Additional opacity range (0.1 + 0.75 = 0.85 max)
+          [
+            '/',
+            ['get', ['to-string', ['get', 'ZCTA5CE10']], ['literal', needValues]],
+            maxNeed || 1 // Prevent division by zero
+          ]
+        ]
+      ],
+      0.05  // Default opacity for zips without data (very transparent)
+    ]);
+    
+  }, [allZipsData]);
+
+  // When toggling off, reset to a lighter base color
+  const handleNeedGradientToggle = () => {
+    const newState = !showNeedGradient;
+    setShowNeedGradient(newState);
+    
+    if (!mapInstanceRef.current) return;
+    
+    if (newState) {
+      // Color zips based on need when turned on
+      applyNeedGradient();
+    } else {
+      // Reset to default color and opacity when turned off
+      mapInstanceRef.current.setPaintProperty('zip-fills', 'fill-color', '#a8cdf0'); // Lighter blue
+      mapInstanceRef.current.setPaintProperty('zip-fills', 'fill-opacity', 0.2);
+    }
+  };
+  
+  // Apply need gradient when data or toggle changes
+  useEffect(() => {
+    if (showNeedGradient && allZipsData.length > 0) {
+      applyNeedGradient();
+    }
+  }, [showNeedGradient, allZipsData, applyNeedGradient]);
 
   // Render ZIP code information
   const renderZipInfo = () => {
@@ -250,7 +390,14 @@ const MapPage = () => {
                 <input type="checkbox" checked={showZipBoundaries} onChange={handleZipBoundariesToggle} />
                 <span>Show Boundaries</span>
               </label>
-              {/* Add other zip filters later */}
+              <label className="filter-checkbox">
+                <input type="checkbox" checked={showNeedGradient} onChange={handleNeedGradientToggle} />
+                <span>Color by Need Level</span>
+              </label>
+              <div className="need-tooltip-container">
+                <div className="need-tooltip"></div>
+              </div>
+              {needDataLoading && <div className="loading-indicator">Loading need data...</div>}
             </div>
           </div>
           
@@ -269,7 +416,7 @@ const MapPage = () => {
                 <span>Show Locations</span>
               </label>
               
-              {/* Category filters */}
+              {/* Category filters with counts */}
               {showLocations && (
                 <div className="category-filters">
                   <h4>Categories</h4>
@@ -282,6 +429,7 @@ const MapPage = () => {
                       />
                       <span className="color-indicator" style={{ backgroundColor: locationCategoryColors[category] }}></span>
                       <span>{category}</span>
+                      <span className="category-count">{locationCounts[category] || 0}</span>
                     </label>
                   ))}
                 </div>
