@@ -258,9 +258,25 @@ const MapPage = () => {
     const foodInsecurity = zipData.pct_food_insecure || 0;
     const povertyRate = zipData.pct_poverty || 0;
     const unemploymentRate = zipData.unemployment_rate || 0;
+    const population = zipData.tot_pop || 0;
     
-    // Simple weighted calculation (adjust weights based on importance)
-    return (foodInsecurity * 0.5) + (povertyRate * 0.3) + (unemploymentRate * 0.2);
+    // Calculate base need score with the original weights
+    const baseNeedScore = (foodInsecurity * 0.5) + (povertyRate * 0.3) + (unemploymentRate * 0.2);
+    
+    // Apply population amplification using logarithm
+    // Using log base 10 to keep numbers manageable
+    // Adding 1 to population to avoid log(0) which is undefined
+    // We use log1p which is log(1+x) to handle small population values more gracefully
+    const populationFactor = Math.log10(Math.max(population, 1));
+    
+    // Normalize population factor (typical populations are 1,000 to 100,000)
+    // log10(1000) ≈ 3, log10(100000) ≈ 5
+    // This gives a multiplier between approximately 0.6 and 1.0 for populations in that range
+    const normalizedPopFactor = Math.max(0.2, Math.min(1.0, populationFactor / 5));
+    
+    // Amplify need score with population factor
+    // Adding 0.5 to ensure even low-populated areas still show some need if they have high need metrics
+    return baseNeedScore * (0.5 + normalizedPopFactor);
   };
 
   // Apply need gradient to zip codes
@@ -392,7 +408,12 @@ const MapPage = () => {
               </label>
               <label className="filter-checkbox">
                 <input type="checkbox" checked={showNeedGradient} onChange={handleNeedGradientToggle} />
-                <span>Color by Need Level</span>
+                <span>Color by Need Level (Pop. Weighted)</span>
+                <span className="tooltip-text">
+                  Need level is calculated using food insecurity (50%), poverty rate (30%), 
+                  and unemployment rate (20%), then amplified by population size. 
+                  Higher population areas with high need will appear darker.
+                </span>
               </label>
               <div className="need-tooltip-container">
                 <div className="need-tooltip"></div>
